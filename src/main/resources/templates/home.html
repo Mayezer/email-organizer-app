@@ -1,5 +1,22 @@
-<h1>Email Organizer</h1>
+<!DOCTYPE html>
 
-<hr>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
 
-<p><strong>Objetive: </strong>A back-end application developed in Java, focused on automating email management, integrating with external APIs, and data persistence.</p>
+    <head>
+        <meta charset="utf-8" />
+    </head>
+
+    <body>
+        <h1 th:text="${homeTitle}"></h1>
+        <p><strong>Objetive: </strong>A back-end application developed in Java, focused on automating email management, integrating with external APIs, and data persistence.
+        <hr>
+
+        <div th:each="opportunity : ${opportunities}">
+            <p><strong>Sender: </strong><span th:text="${opportunity.sender}"></span></p>
+            <p><strong>Subject: </strong><span th:text="${opportunity.subject}"></span></p>
+            <p><strong>Summary: </strong><span th:text="${opportunity.summary}"></span></p>
+        </div>
+
+    </body>
+
+</html>
