@@ -1,20 +1,35 @@
 package com.mayezer.email_organizer_app.service;
 
-import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestClient;
 
 import com.mayezer.email_organizer_app.model.Opportunity;
 
-@Service 
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.Setter;
+
+@Getter 
+@Setter 
+@AllArgsConstructor 
+@Service
 public class OpportunityService {
 
-    public List<Opportunity> listOpportunities() {
-        ArrayList<Opportunity> listOpportunitys = new ArrayList<>();
-        Opportunity opportunity = new Opportunity("", "", "");
+    private final RestClient restClient;
+    private final ApiAuthService apiAuthService;
 
-        listOpportunitys.add(opportunity);
-        return listOpportunitys;
+    public List<Opportunity> listOpportunities() {
+        String accessToken = apiAuthService.getAccessToken();
+        Opportunity[] opportunities = restClient
+            .get()
+            .uri("/api/v1/emails/")
+            .header("Authorization", "Bearer " + accessToken)
+            .retrieve()
+            .body(Opportunity[].class);
+
+        return Arrays.asList(opportunities);
     }
 }
