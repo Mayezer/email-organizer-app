@@ -1,0 +1,115 @@
+.page-tabs {
+  display: grid;
+  align-items: center;
+  justify-items: start;
+  gap: 0.625rem;
+  margin-bottom: 0.875rem;
+}
+
+.page-tabs:has(.page-direction) {
+  grid-template-areas: 'previous numbers next';
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
+.page-numbers {
+  display: inline-flex;
+  gap: 0.1875rem;
+  padding: 0.1875rem;
+  border: 1px solid var(--line);
+  border-radius: 0.875rem;
+  background: var(--surface);
+}
+
+.page-tabs:has(.page-direction) .page-numbers {
+  grid-area: numbers;
+  justify-self: center;
+}
+
+.page-tabs button {
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.page-numbers button {
+  min-width: 2.375rem;
+  min-height: 2.375rem;
+  padding: 0.25rem;
+  border-radius: 0.625rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.page-numbers button:hover {
+  background: var(--accent-soft);
+  color: var(--accent-hover);
+}
+
+.page-numbers button[aria-current='page'] {
+  background: var(--accent);
+  color: var(--surface);
+  box-shadow: 0 2px 4px var(--shadow);
+}
+
+.page-tabs .page-direction {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  min-height: 2.75rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 999px;
+  color: var(--accent-hover);
+}
+
+.page-previous {
+  grid-area: previous;
+}
+
+.page-next {
+  grid-area: next;
+  justify-self: end;
+}
+
+.page-direction svg {
+  width: 1.625rem;
+  height: 1.625rem;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.65;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.page-tabs .page-direction:hover:enabled {
+  background: var(--accent-soft);
+}
+
+.page-direction:hover:enabled svg {
+  background: var(--accent);
+  color: var(--surface);
+}
+
+.page-tabs .page-direction:disabled {
+  color: var(--text-muted);
+  opacity: 0.65;
+  cursor: default;
+}
+
+.page-direction:disabled svg {
+  background: var(--line);
+}
+
+@media (max-width: 35rem) {
+  .page-tabs:has(.page-direction) {
+    grid-template-areas:
+      'numbers numbers'
+      'previous next';
+    grid-template-columns: 1fr 1fr;
+    row-gap: 0.25rem;
+  }
+}

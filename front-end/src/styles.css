@@ -1,1 +1,67 @@
-/* You can add global styles to this file, and also import other style files */
+:root {
+  color-scheme: light;
+  --surface-canvas: #f8f9ff;
+  --surface-panel: #eff4ff;
+  --surface: #fff;
+  --text: #0b1c30;
+  --text-muted: #424656;
+  --line: #dbe4f3;
+  --line-strong: #bfcce2;
+  --accent: #0050cb;
+  --accent-hover: #003fa4;
+  --accent-soft: #e0ebff;
+  --error: #a21b1b;
+  --shadow: rgb(15 23 42 / 5%);
+  --radius-panel: 1rem;
+  color: var(--text);
+  background: var(--surface-canvas);
+  font-family: system-ui, sans-serif;
+  line-height: 1.5;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.panel-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 0.625rem;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.panel-icon svg,
+.message-icon svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.7;
+}
+
+.panel-icon svg {
+  width: 1.125rem;
+  height: 1.125rem;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

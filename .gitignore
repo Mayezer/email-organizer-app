@@ -9,6 +9,7 @@ build/
 **.env
 !.env.example
 docs/
+AGENTS.md
 
 ### STS ###
 .apt_generated
