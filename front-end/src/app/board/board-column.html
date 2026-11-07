@@ -1,0 +1,113 @@
+<section class="column" [attr.aria-labelledby]="'column-' + definition().id">
+  <header class="column-heading">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path [attr.d]="definition().icon" /></svg>
+    <h3 [id]="'column-' + definition().id">{{ definition().label }}</h3>
+    @if (state().loading) {
+      <span class="spinner" aria-label="Carregando"></span>
+    }
+  </header>
+  <nav class="page-tabs" [attr.aria-label]="'Paginação de ' + definition().label">
+    <div class="page-numbers">
+      @for (number of numbers(); track number) {
+        <button
+          type="button"
+          [attr.aria-label]="'Página ' + number + ' de ' + definition().label"
+          [attr.aria-current]="number === state().page ? 'page' : null"
+          (click)="pageSelected.emit(number)"
+        >
+          {{ number }}
+        </button>
+      }
+    </div>
+    <div class="column-directions">
+      <button
+        type="button"
+        class="page-direction"
+        [disabled]="state().page === 1"
+        (click)="pageSelected.emit(state().page - 1)"
+      >
+        <span aria-hidden="true">←</span> Anterior
+      </button>
+      <button
+        type="button"
+        class="page-direction"
+        [disabled]="state().page === pageCount()"
+        (click)="pageSelected.emit(state().page + 1)"
+      >
+        Próximo <span aria-hidden="true">→</span>
+      </button>
+    </div>
+  </nav>
+  <p class="page-caption">
+    Página {{ state().page }} · {{ items().length }}
+    {{ items().length === 1 ? 'e-mail' : 'e-mails' }}
+  </p>
+  @if (state().failed) {
+    <div class="column-notice" role="status">
+      <p>Não foi possível carregar esta coluna.</p>
+      <button type="button" (click)="retried.emit()">Tentar novamente</button>
+    </div>
+  }
+  @if (items().length > 0) {
+    @for (view of [state().animationKey]; track view) {
+      <ul
+        class="column-messages"
+        [class.page-slide]="state().direction !== null"
+        [style.--page-slide-offset]="state().direction"
+        [attr.aria-label]="'E-mails em ' + definition().label"
+      >
+        @for (email of items(); track email.gmail_id) {
+          <li
+            app-email-card
+            [email]="email"
+            [headingLevel]="4"
+            [allowManual]="definition().category === '' && email.effective_category === ''"
+            [savingId]="savingId()"
+            (focusin)="remembered.emit(email.gmail_id)"
+            (click)="remembered.emit(email.gmail_id)"
+            (categorySubmitted)="
+              categorySubmitted.emit({ gmailId: email.gmail_id, submission: $event })
+            "
+          >
+            @if (email.processing_status === 'COMPLETED') {
+              <form
+                class="card-move"
+                (submit)="submitMove($event, email.gmail_id, destination.value)"
+              >
+                <label>
+                  <span>Mover para</span>
+                  <select
+                    #destination
+                    [attr.aria-label]="
+                      'Mover ' + (email.subject?.trim() || 'e-mail sem assunto') + ' para'
+                    "
+                    [disabled]="movingId() !== null"
+                  >
+                    <option value="automatic" [selected]="email.board_column == null">
+                      Coluna automática
+                    </option>
+                    @for (column of destinations; track column.id) {
+                      <option
+                        [value]="column.category"
+                        [selected]="email.board_column === column.category"
+                      >
+                        {{ column.label }}
+                      </option>
+                    }
+                  </select>
+                </label>
+                <button type="submit" [attr.aria-disabled]="movingId() !== null ? 'true' : null">
+                  {{ movingId() === email.gmail_id ? 'Movendo…' : 'Mover' }}
+                </button>
+              </form>
+            }
+          </li>
+        }
+      </ul>
+    }
+  } @else if (state().loading) {
+    <p class="column-notice" role="status">Carregando mensagens…</p>
+  } @else if (state().loaded && !state().failed) {
+    <p class="column-notice" role="status">Nenhum e-mail nesta coluna.</p>
+  }
+</section>

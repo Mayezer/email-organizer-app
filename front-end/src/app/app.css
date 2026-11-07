@@ -16,6 +16,68 @@
   font-weight: 750;
 }
 
+.sign-out,
+.login-panel button {
+  min-height: 2.5rem;
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 0.625rem;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.brand .sign-out {
+  margin-inline-start: auto;
+}
+
+.login-panel {
+  width: min(100%, 27rem);
+  margin-inline: auto;
+  padding: clamp(1rem, 5vw, 2rem);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--surface);
+  box-shadow: 0 0.25rem 1rem var(--shadow);
+}
+
+.login-panel form {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.login-panel input {
+  width: 100%;
+  padding: 0.625rem;
+  margin-bottom: 0.5rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 0.5rem;
+  font: inherit;
+}
+
+.login-panel button {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: white;
+}
+
+.sign-out:disabled,
+.login-panel button:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.session-error,
+.workspace-heading .session-error {
+  color: var(--error);
+}
+
+.workspace-heading strong {
+  overflow-wrap: anywhere;
+}
+
 .workspace {
   padding-block: clamp(1.5rem, 4vw, 2.75rem) 2.5rem;
 }
@@ -35,6 +97,40 @@
   margin: 0.5rem 0 0;
   color: var(--text-muted);
   font-size: 0.9375rem;
+}
+
+.view-switch {
+  display: flex;
+  gap: 0.375rem;
+  width: fit-content;
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  margin: 0 0 1.25rem;
+  padding: 0.375rem;
+  background: var(--surface);
+}
+
+.view-switch label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.875rem;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 650;
+}
+
+.view-switch label:has(:checked) {
+  background: var(--accent-soft);
+  color: var(--accent-hover);
+}
+.view-switch label:has(:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.view-switch input {
+  accent-color: var(--accent);
 }
 
 @media (min-width: 54rem) {

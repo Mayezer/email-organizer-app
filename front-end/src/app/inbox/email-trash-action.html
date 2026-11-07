@@ -1,0 +1,35 @@
+<div class="trash-action">
+  <button type="button" class="trash-button" (click)="openTrash(trashDialog)">
+    Mover para a Lixeira
+  </button>
+  <dialog
+    #trashDialog
+    aria-label="Mover e-mail para a Lixeira do Gmail"
+    (cancel)="preventTrashCancel($event)"
+  >
+    <h2>Mover para a Lixeira do Gmail?</h2>
+    <p>{{ email().subject?.trim() || 'E-mail sem assunto' }} sairá da lista ativa.</p>
+    @if (trashError()) {
+      <p class="trash-error" role="alert">{{ trashError() }}</p>
+    }
+    <div class="trash-actions">
+      <button
+        type="button"
+        class="trash-button"
+        autofocus
+        [disabled]="trashBusy()"
+        (click)="trashDialog.close()"
+      >
+        Cancelar
+      </button>
+      <button
+        type="button"
+        class="trash-button trash-confirm"
+        [attr.aria-disabled]="trashBusy()"
+        (click)="confirmTrash(trashDialog)"
+      >
+        {{ trashBusy() ? 'Movendo…' : 'Confirmar envio à Lixeira' }}
+      </button>
+    </div>
+  </dialog>
+</div>

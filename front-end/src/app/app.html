@@ -2,14 +2,96 @@
   <div class="wrap brand">
     <img src="mail.svg" alt="" width="36" height="36" />
     <span>Email Organizer</span>
+    @if (session.gmailAccount()) {
+      <button
+        class="sign-out"
+        type="button"
+        [disabled]="session.busy()"
+        (click)="session.signOut()"
+      >
+        Sair
+      </button>
+    }
   </div>
 </header>
 
-<main class="wrap workspace">
-  <header class="workspace-heading">
-    <h1>Gestão de e-mails</h1>
-    <p>Consulte suas mensagens importadas em um só lugar.</p>
-  </header>
+@if (session.gmailAccount() === undefined) {
+  <main class="wrap workspace">
+    @if (session.busy()) {
+      <p role="status">Consultando sua sessão…</p>
+    } @else {
+      <p role="alert">{{ session.error() }}</p>
+      <button class="sign-out" type="button" (click)="session.refresh()">Tentar novamente</button>
+    }
+  </main>
+} @else if (session.gmailAccount() === null) {
+  <main class="wrap workspace">
+    <section class="login-panel" aria-labelledby="login-title">
+      <header class="workspace-heading">
+        <h1 id="login-title">Entrar no Email Organizer</h1>
+        <p>Use seu usuário do App para acessar a conta Gmail vinculada.</p>
+      </header>
+      <form method="post" (submit)="submitLogin($event, username.value, password)">
+        <label for="username">Usuário</label>
+        <input #username id="username" name="username" autocomplete="username" required />
+        <label for="password">Senha</label>
+        <input
+          #password
+          id="password"
+          name="password"
+          type="password"
+          autocomplete="current-password"
+          required
+        />
+        @if (session.error()) {
+          <p class="session-error" role="alert">{{ session.error() }}</p>
+        }
+        <button type="submit" [disabled]="session.busy()">
+          {{ session.busy() ? 'Entrando…' : 'Entrar' }}
+        </button>
+      </form>
+    </section>
+  </main>
+} @else {
+  <main class="wrap workspace">
+    <header class="workspace-heading">
+      <h1>Gestão de e-mails</h1>
+      <p>
+        Conta Gmail vinculada <strong>{{ session.gmailAccount() }}</strong>
+      </p>
+      @if (session.error()) {
+        <p class="session-error" role="alert">{{ session.error() }}</p>
+      }
+    </header>
 
-  <app-inbox />
-</main>
+    <fieldset class="view-switch">
+      <legend class="visually-hidden">Visualização dos e-mails</legend>
+      <label
+        ><input
+          type="radio"
+          name="email-view"
+          [checked]="view() === 'list'"
+          (change)="view.set('list')"
+        />
+        Lista</label
+      >
+      <label
+        ><input
+          type="radio"
+          name="email-view"
+          [checked]="view() === 'board'"
+          (change)="view.set('board')"
+        />
+        Quadro</label
+      >
+    </fieldset>
+    @if (trash.feedback()) {
+      <p #trashStatus tabindex="-1" role="status">{{ trash.feedback() }}</p>
+    }
+    @if (view() === 'list') {
+      <app-inbox />
+    } @else {
+      <app-board />
+    }
+  </main>
+}

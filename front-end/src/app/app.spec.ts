@@ -1,8 +1,9 @@
-import { provideHttpClient } from '@angular/common/http';
+import { HttpParams, provideHttpClient, withInterceptors } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { vi } from 'vitest';
 import { App } from './app';
+import { expireAppSession } from './app-session';
 import { EmailMetadata, EmailPage, EmailSyncJob } from './inbox/email-page';
 
 const receivedAt = new Date(2026, 10, 6, 12).toISOString();
@@ -27,7 +28,10 @@ describe('Caixa de entrada', () => {
   beforeEach(() => {
     TestBed.configureTestingModule({
       imports: [App],
-      providers: [provideHttpClient(), provideHttpClientTesting()],
+      providers: [
+        provideHttpClient(withInterceptors([expireAppSession])),
+        provideHttpClientTesting(),
+      ],
     });
     http = TestBed.inject(HttpTestingController);
   });
@@ -40,12 +44,239 @@ describe('Caixa de entrada', () => {
   function renderInbox() {
     const fixture = TestBed.createComponent(App);
     fixture.detectChanges();
+    http.expectOne('/api/session').flush({ gmailAccount: 'linked@example.test' });
+    fixture.detectChanges();
     return {
       fixture,
       root: fixture.nativeElement as HTMLElement,
       request: http.expectOne({ method: 'GET', url: '/api/email-pages' }),
     };
   }
+
+  it('cancela sem enviar, preserva o cartão sem permissão e confirma uma vez', () => {
+    const { fixture, root, request } = renderInbox();
+    request.flush({ ...page, next_cursor: null });
+    fixture.detectChanges();
+    const action = root.querySelector('app-email-trash-action')!;
+    const dialog = action.querySelector('dialog')!;
+    Object.defineProperties(dialog, {
+      showModal: { value: () => (dialog.open = true) },
+      close: { value: () => (dialog.open = false) },
+    });
+    const open = action.querySelector<HTMLButtonElement>('.trash-action > button')!;
+    const cancel = dialog.querySelector<HTMLButtonElement>('[autofocus]')!;
+    const confirm = dialog.querySelector<HTMLButtonElement>('.trash-confirm')!;
+    const path = '/api/emails/synthetic-0/trash';
+    open.click();
+    cancel.click();
+    expect(dialog.open).toBe(false);
+    http.expectNone(path);
+
+    open.click();
+    confirm.click();
+    confirm.click();
+    http.expectOne({ method: 'POST', url: path }).flush(null, {
+      status: 403,
+      statusText: 'Forbidden',
+    });
+    fixture.detectChanges();
+    expect(dialog.textContent).toContain('precisa de autorização');
+    expect(root.querySelectorAll('li')).toHaveLength(5);
+
+    confirm.click();
+    http.expectOne({ method: 'POST', url: path }).flush(null, {
+      status: 202,
+      statusText: 'Accepted',
+    });
+    fixture.detectChanges();
+    expect(dialog.open).toBe(false);
+    expect(root.querySelectorAll('li')).toHaveLength(4);
+    expect(root.textContent).toContain('Clique em Atualizar para confirmar a remoção');
+    expect(root.textContent).not.toContain('Mensagem de teste 1');
+  });
+
+  it('mantém a caixa de entrada fechada até o login e a fecha ao sair', () => {
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    http.expectOne('/api/session').flush({ gmailAccount: null });
+    fixture.detectChanges();
+    const root = fixture.nativeElement as HTMLElement;
+    expect(root.textContent).toContain('Entrar no Email Organizer');
+    http.expectNone('/api/email-pages');
+
+    const username = root.querySelector<HTMLInputElement>('#username')!;
+    const password = root.querySelector<HTMLInputElement>('#password')!;
+    const form = root.querySelector('form')!;
+    username.value = 'revisor';
+    password.value = 'senha-errada';
+    form.dispatchEvent(new Event('submit', { cancelable: true }));
+    http.expectOne({ method: 'POST', url: '/api/session/login' }).flush(null, {
+      status: 401,
+      statusText: 'Unauthorized',
+    });
+    fixture.detectChanges();
+    expect(root.querySelector('[role="alert"]')?.textContent).toContain(
+      'Usuário ou senha inválidos',
+    );
+    http.expectNone('/api/email-pages');
+
+    password.value = 'senha-sintetica';
+    form.dispatchEvent(new Event('submit', { cancelable: true }));
+    const login = http.expectOne({ method: 'POST', url: '/api/session/login' });
+    expect((login.request.body as HttpParams).get('username')).toBe('revisor');
+    expect(password.value).toBe('');
+    login.flush(null, { status: 204, statusText: 'No Content' });
+    http.expectOne('/api/session').flush({ gmailAccount: 'linked@example.test' });
+    fixture.detectChanges();
+    http.expectOne('/api/email-pages').flush({ ...page, next_cursor: null });
+    fixture.detectChanges();
+    expect(root.textContent).toContain('Mensagem de teste 1');
+
+    root.querySelector<HTMLButtonElement>('.sign-out')!.click();
+    http.expectOne({ method: 'POST', url: '/api/session/logout' }).flush(null);
+    http.expectOne('/api/session').flush({ gmailAccount: null });
+    fixture.detectChanges();
+    expect(root.textContent).toContain('Entrar no Email Organizer');
+    expect(root.textContent).not.toContain('Mensagem de teste 1');
+  });
+
+  it('fecha a caixa de entrada quando o servidor expira a sessão', () => {
+    const { fixture, root, request } = renderInbox();
+    request.flush(null, { status: 401, statusText: 'Unauthorized' });
+    fixture.detectChanges();
+    expect(root.textContent).toContain('Sua sessão expirou');
+    expect(root.querySelector('app-inbox')).toBeNull();
+  });
+
+  it('exibe o texto consolidado da conversa em um só bloco', () => {
+    const { fixture, root, request } = renderInbox();
+    request.flush({
+      ...page,
+      next_cursor: null,
+      items: page.items.slice(0, 2).map((email) => ({ ...email, thread_id: 'same-thread' })),
+    });
+    fixture.detectChanges();
+    const cards = root.querySelectorAll('app-email-original');
+    const open = (index: number) => {
+      const card = cards[index];
+      const dialog = card.querySelector('dialog')!;
+      Object.defineProperty(dialog, 'showModal', { value: () => (dialog.open = true) });
+      Object.defineProperty(dialog, 'close', { value: () => (dialog.open = false) });
+      card.querySelector('button')!.click();
+      fixture.detectChanges();
+      return dialog;
+    };
+    http.expectNone((candidate) => candidate.url.endsWith('/original'));
+    const first = open(0);
+    expect(first.textContent).toContain('Buscando o texto');
+    const text = 'Primeira mensagem\n\nSegunda mensagem\n<img src="https://example.test/recurso">';
+    http.expectOne('/api/emails/synthetic-0/original').flush({
+      text,
+      partial: true,
+      links: [
+        'HTTPS://Example.Test:443/agenda?modo=publico',
+        'https://example.test/agenda?modo=publico',
+        'http://example.test/edicao',
+        'javascript:alert(1)',
+        'data:text/html,inativo',
+        'https:///example.test/invalido',
+        'https://example.test/%zz',
+        'https://example.test:70000/invalido',
+        '//example.test/relativo',
+      ],
+    });
+    fixture.detectChanges();
+    expect(first.querySelectorAll('pre')).toHaveLength(1);
+    expect(first.querySelector('pre')?.textContent).toBe(text);
+    expect(first.textContent).toContain('Exibindo o conteúdo disponível de parte da conversa.');
+    expect(first.querySelector('img, pre a')).toBeNull();
+    const links = [...first.querySelectorAll('a')];
+    expect(links.map((link) => link.href)).toEqual([
+      'https://example.test/agenda?modo=publico',
+      'http://example.test/edicao',
+    ]);
+    for (const link of links) {
+      expect(link.textContent.trim()).toBe(link.href);
+      expect(link.target).toBe('_blank');
+      expect(link.rel).toBe('noopener noreferrer');
+    }
+    first.querySelector('button')!.click();
+    fixture.detectChanges();
+    expect(first.querySelector('pre')).toBeNull();
+    expect(first.querySelector('a')).toBeNull();
+
+    const second = open(1);
+    http.expectOne('/api/emails/synthetic-1/original').flush(null, {
+      status: 503,
+      statusText: 'Service Unavailable',
+    });
+    fixture.detectChanges();
+    Array.from(second.querySelectorAll('button'))
+      .find((button) => button.textContent.includes('Tentar novamente'))!
+      .click();
+    http.expectOne('/api/emails/synthetic-1/original').flush(null, {
+      status: 404,
+      statusText: 'Not Found',
+    });
+    fixture.detectChanges();
+    expect(second.textContent).toContain('Esta mensagem está indisponível.');
+  });
+
+  it('lista os anexos sem baixá-los e mostra falhas no arquivo solicitado', () => {
+    const { fixture, root, request } = renderInbox();
+    request.flush({ ...page, next_cursor: null, items: page.items.slice(0, 1) });
+    fixture.detectChanges();
+    const card = root.querySelector('app-email-original')!;
+    const dialog = card.querySelector('dialog')!;
+    Object.defineProperty(dialog, 'showModal', { value: () => (dialog.open = true) });
+    card.querySelector('button')!.click();
+    http.expectOne('/api/emails/synthetic-0/original').flush({
+      text: '',
+      partial: false,
+      links: [],
+      attachments: [
+        {
+          gmailId: 'message-from-thread',
+          id: 'file-id',
+          filename: 'relatório.bin',
+          size: 3,
+          tooLarge: false,
+        },
+        {
+          gmailId: 'synthetic-0',
+          id: 'large-id',
+          filename: 'grande.zip',
+          size: 11_534_336,
+          tooLarge: true,
+        },
+      ],
+    });
+    fixture.detectChanges();
+    const [file, large] = [...dialog.querySelectorAll('.original-attachments li')];
+    expect(file.textContent).toContain('relatório.bin');
+    expect(file.textContent).toContain('3 B');
+    expect(large.textContent).toContain('11 MiB');
+    expect(large.textContent).toContain('Este arquivo excede o limite de download.');
+    expect(large.querySelector('button')).toBeNull();
+    http.expectNone((candidate) => candidate.url.includes('/attachments/'));
+
+    const download = file.querySelector('button')!;
+    download.click();
+    download.click();
+    const path = '/api/emails/message-from-thread/attachments/file-id';
+    const transfer = http.expectOne({ method: 'GET', url: path });
+    expect(transfer.request.responseType).toBe('blob');
+    fixture.detectChanges();
+    expect(file.textContent).toContain('Baixando anexo');
+    transfer.flush(new Blob(), { status: 404, statusText: 'Not Found' });
+    fixture.detectChanges();
+    expect(file.textContent).toContain('Este anexo não está mais disponível.');
+
+    download.click();
+    http.expectOne(path).flush(new Blob(), { status: 413, statusText: 'Content Too Large' });
+    fixture.detectChanges();
+    expect(file.textContent).toContain('Este arquivo excede o limite de download.');
+  });
 
   it('mostra o carregamento enquanto a primeira página está pendente', () => {
     const { root, request } = renderInbox();
@@ -75,6 +306,40 @@ describe('Caixa de entrada', () => {
     expect(messages[4].textContent).toContain('Remetente desconhecido');
     expect(messages[4].textContent).toContain('Data indisponível');
     expect(messages[4].querySelector('time')).toBeNull();
+  });
+
+  it('diferencia presença, ausência e verificação pendente em cada indicador', () => {
+    const { fixture, root, request } = renderInbox();
+    const flags = [
+      [true, true],
+      [true, false],
+      [false, true],
+      [false, false],
+      [null, null],
+    ];
+    request.flush({
+      ...page,
+      next_cursor: null,
+      items: page.items.map((item, i) => ({
+        ...item,
+        has_attachments: flags[i][0],
+        has_links: flags[i][1],
+      })),
+    });
+    fixture.detectChanges();
+    expect(
+      [...root.querySelectorAll('li')].map((card) =>
+        [...card.querySelectorAll('.message-indicators dd')].map((value) =>
+          value.textContent?.trim(),
+        ),
+      ),
+    ).toEqual([
+      ['Sim', 'Sim'],
+      ['Sim', 'Não'],
+      ['Não', 'Sim'],
+      ['Não', 'Não'],
+      ['Ainda não verificado', 'Ainda não verificado'],
+    ]);
   });
 
   it('mostra um aviso quando a consulta retorna uma lista vazia', () => {

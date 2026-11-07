@@ -32,6 +32,8 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.server.ResponseStatusException;
 
 import com.mayezer.email_organizer_app.controller.EmailController;
+import com.mayezer.email_organizer_app.config.AppAccount;
+import com.mayezer.email_organizer_app.config.EmailApiConfig;
 
 class EmailApiServiceTest {
 
@@ -47,14 +49,34 @@ class EmailApiServiceTest {
 
     @BeforeEach
     void setUp() {
-        RestClient.Builder builder = RestClient.builder().baseUrl(BASE);
+        RestClient.Builder builder = RestClient.builder();
         server = MockRestServiceServer.bindTo(builder).build();
-        RestClient client = builder.build();
+        RestClient client = new EmailApiConfig().emailApiClient(builder, new AppAccount("linked@example.test"), BASE);
         MockEnvironment environment = new MockEnvironment()
             .withProperty("EMAIL_ORGANIZER_API_USERNAME", "test-user")
             .withProperty("EMAIL_ORGANIZER_API_PASSWORD", "test-password");
         authService = new ApiAuthService(client, environment);
         emailService = new EmailApiService(client, authService);
+    }
+
+    @Test
+    void preservesTrueFalseAndUnknownIndicatorsInThePagedResponse() throws Exception {
+        server.expect(requestTo(LOGIN)).andRespond(withSuccess(
+            "{\"access\":\"a1\",\"refresh\":\"r1\"}", MediaType.APPLICATION_JSON));
+        server.expect(requestTo(EMAIL_PAGES)).andRespond(withSuccess("""
+            {"items":[
+              {"gmail_id":"synthetic-checked","imported_at":"2026-11-06T11:00:00Z","has_attachments":false,"has_links":true},
+              {"gmail_id":"synthetic-legacy","imported_at":"2026-11-06T11:00:00Z","has_attachments":null,"has_links":null}
+            ],"change_cursor":"confirmed","next_cursor":null}
+            """, MediaType.APPLICATION_JSON));
+        MockMvcBuilders.standaloneSetup(new EmailController(emailService)).build()
+            .perform(get("/api/email-pages"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.items[0].has_attachments").value(false))
+            .andExpect(jsonPath("$.items[0].has_links").value(true))
+            .andExpect(jsonPath("$.items[1].has_attachments").isEmpty())
+            .andExpect(jsonPath("$.items[1].has_links").isEmpty());
+        server.verify();
     }
 
     @Test
@@ -64,6 +86,7 @@ class EmailApiServiceTest {
                 {"access":"a1","refresh":"r1"}
                 """, MediaType.APPLICATION_JSON));
         server.expect(requestTo(EMAILS)).andExpect(header("Authorization", "Bearer a1"))
+            .andExpect(header("X-Email-Account", "linked@example.test"))
             .andRespond(withSuccess("""
                 [
                   {"gmail_id":"one","thread_id":"thread","received_at":"2026-11-06T10:00:00Z",
@@ -172,6 +195,57 @@ class EmailApiServiceTest {
             .andExpect(jsonPath("$.change_cursor").value("rev:6"));
         mvc.perform(get("/api/email-changes").param("cursor", "invalid"))
             .andExpect(status().isBadRequest());
+        server.verify();
+    }
+
+    @Test
+    void forwardsBoardStatusColumnSnapshotAndTheIndependentPageCursor() throws Exception {
+        server.expect(requestTo(LOGIN))
+            .andRespond(withSuccess("{\"access\":\"a1\",\"refresh\":\"r1\"}", MediaType.APPLICATION_JSON));
+        server.expect(requestTo(EMAIL_PAGES + "?at=confirmed&processing_status=COMPLETED&board_column=event%20invitations"))
+            .andExpect(header("Authorization", "Bearer a1"))
+            .andRespond(withSuccess("""
+                {"items":[{"gmail_id":"board-event","processing_status":"COMPLETED",
+                 "effective_category":"event invitations","imported_at":"2026-11-06T11:00:00Z"}],
+                 "change_cursor":"confirmed","next_cursor":"event-next"}
+                """, MediaType.APPLICATION_JSON));
+        server.expect(requestTo(EMAIL_PAGES + "?cursor=event-next&processing_status=COMPLETED&board_column=event%20invitations"))
+            .andRespond(withSuccess("{\"items\":[],\"change_cursor\":\"confirmed\",\"next_cursor\":null}", MediaType.APPLICATION_JSON));
+        var mvc = MockMvcBuilders.standaloneSetup(new EmailController(emailService)).build();
+        mvc.perform(get("/api/email-pages").param("board_column", "event invitations")
+                .param("at", "confirmed").param("processing_status", "COMPLETED"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.items[0].gmail_id").value("board-event"))
+            .andExpect(jsonPath("$.next_cursor").value("event-next"));
+        mvc.perform(get("/api/email-pages").param("board_column", "event invitations")
+                .param("cursor", "event-next").param("processing_status", "COMPLETED"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.items.length()").value(0));
+        server.verify();
+    }
+
+    @Test
+    void forwardsCardMovementAndPropagatesRejectedMoves() throws Exception {
+        server.expect(requestTo(LOGIN)).andRespond(withSuccess(
+            "{\"access\":\"a1\",\"refresh\":\"r1\"}", MediaType.APPLICATION_JSON));
+        server.expect(requestTo(EMAILS + "synthetic-vacancy/board-column/"))
+            .andExpect(header("Authorization", "Bearer a1"))
+            .andExpect(content().json("{\"column\":\"event invitations\"}"))
+            .andRespond(withSuccess("""
+                {"gmail_id":"synthetic-vacancy","imported_at":"2026-11-06T11:00:00Z",
+                 "processing_status":"COMPLETED","effective_category":"professional opportunities and recruitment",
+                 "board_column":"event invitations","update_revision":"12"}
+                """, MediaType.APPLICATION_JSON));
+        server.expect(requestTo(EMAILS + "synthetic-pending/board-column/"))
+            .andRespond(withStatus(HttpStatus.CONFLICT));
+        var mvc = MockMvcBuilders.standaloneSetup(new EmailController(emailService)).build();
+        mvc.perform(patch("/api/emails/synthetic-vacancy/board-column")
+                .contentType(MediaType.APPLICATION_JSON).content("{\"column\":\"event invitations\"}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.board_column").value("event invitations"))
+            .andExpect(jsonPath("$.effective_category").value("professional opportunities and recruitment"))
+            .andExpect(jsonPath("$.update_revision").value("12"));
+        mvc.perform(patch("/api/emails/synthetic-pending/board-column")
+                .contentType(MediaType.APPLICATION_JSON).content("{\"column\":\"event invitations\"}"))
+            .andExpect(status().isConflict());
         server.verify();
     }
 

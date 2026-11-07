@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.mayezer.email_organizer_app.dto.EmailChanges;
 import com.mayezer.email_organizer_app.dto.EmailItem;
+import com.mayezer.email_organizer_app.dto.EmailMetadata;
 import com.mayezer.email_organizer_app.dto.EmailPage;
 import com.mayezer.email_organizer_app.dto.EmailSyncJob;
 import com.mayezer.email_organizer_app.service.EmailApiService;
@@ -36,9 +37,11 @@ public class EmailController {
     public EmailPage listEmailPage(
         @RequestParam(name = "cursor", required = false) String cursor,
         @RequestParam(name = "category", required = false) String category,
-        @RequestParam(name = "at", required = false) String at
+        @RequestParam(name = "at", required = false) String at,
+        @RequestParam(name = "processing_status", required = false) String processingStatus,
+        @RequestParam(name = "board_column", required = false) String boardColumn
     ) {
-        return emailApiService.listPage(cursor, category, at);
+        return emailApiService.listPage(cursor, category, at, processingStatus, boardColumn);
     }
 
     @GetMapping("/api/email-changes")
@@ -71,4 +74,11 @@ public class EmailController {
     }
 
     public record ManualCategory(String category) {}
+
+    @PatchMapping("/api/emails/{gmailId}/board-column")
+    public EmailMetadata moveCard(@PathVariable String gmailId, @RequestBody BoardColumn move) {
+        return emailApiService.moveCard(gmailId, move.column());
+    }
+
+    public record BoardColumn(String column) {}
 }

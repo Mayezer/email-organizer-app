@@ -7,6 +7,11 @@ export interface EmailMetadata {
   readonly imported_at: string;
   readonly processing_status: 'PENDING' | 'COMPLETED' | 'FAILED';
   readonly effective_category: string;
+  readonly board_column?: string | null;
+  readonly update_revision?: string | null;
+  readonly has_attachments?: boolean | null;
+  readonly has_links?: boolean | null;
+  readonly trashed_at?: string | null;
 }
 
 export interface EmailPage {

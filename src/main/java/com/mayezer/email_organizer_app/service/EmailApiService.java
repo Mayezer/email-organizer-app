@@ -17,6 +17,7 @@ import org.springframework.web.client.RestClientException;
 import org.springframework.web.server.ResponseStatusException;
 
 import com.mayezer.email_organizer_app.dto.EmailChanges;
+import com.mayezer.email_organizer_app.dto.EmailConversation;
 import com.mayezer.email_organizer_app.dto.EmailItem;
 import com.mayezer.email_organizer_app.dto.EmailMetadata;
 import com.mayezer.email_organizer_app.dto.EmailPage;
@@ -33,11 +34,31 @@ public class EmailApiService {
     private static final String EMAIL_CHANGES_PATH = "/api/v1/email-changes/";
     private static final String SYNC_PATH = "/api/v1/email-sync-jobs/";
     private static final int PAGE_SIZE = 5;
+    private static final int MAX_CONVERSATION_MESSAGES = 5;
     private final RestClient restClient;
     private final ApiAuthService apiAuthService;
 
     public List<EmailItem> listEmails() {
         return list(null, EmailItem[].class);
+    }
+
+    public EmailConversation readConversation(String gmailId) {
+        EmailConversation conversation = withAuthentication(token -> {
+            try {
+                return restClient.get().uri(EMAILS_PATH + "{id}/conversation/", gmailId)
+                    .headers(headers -> headers.setBearerAuth(token))
+                    .retrieve().body(EmailConversation.class);
+            } catch (HttpClientErrorException.NotFound exception) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+            }
+        });
+        if (conversation == null || conversation.gmailIds() == null
+            || conversation.gmailIds().size() > MAX_CONVERSATION_MESSAGES
+            || !conversation.gmailIds().contains(gmailId)
+            || conversation.gmailIds().stream().anyMatch(id -> id == null || !id.matches("[A-Za-z0-9_-]{1,255}"))) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Email API returned an invalid conversation");
+        }
+        return conversation;
     }
 
     <T> List<T> list(String category, Class<T[]> responseType) {
@@ -54,7 +75,7 @@ public class EmailApiService {
         return List.of(result);
     }
 
-    public EmailPage listPage(String cursor, String category, String at) {
+    public EmailPage listPage(String cursor, String category, String at, String processingStatus, String boardColumn) {
         Map<String, String> parameters = new LinkedHashMap<>();
         if (cursor != null) {
             parameters.put("cursor", cursor);
@@ -64,6 +85,12 @@ public class EmailApiService {
         }
         if (at != null) {
             parameters.put("at", at);
+        }
+        if (processingStatus != null) {
+            parameters.put("processing_status", processingStatus);
+        }
+        if (boardColumn != null) {
+            parameters.put("board_column", boardColumn);
         }
         EmailPage page = fetchPage(EMAIL_PAGES_PATH, parameters, EmailPage.class);
         if (page == null || page.changeCursor() == null || !validItems(page.items())) {
@@ -134,12 +161,51 @@ public class EmailApiService {
         if (category == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Category is required");
         }
-        withAuthentication(token -> {
+        patchEmail(gmailId, "manual-category", Map.of("category", category),
+            RestClient.ResponseSpec::toBodilessEntity);
+    }
+
+    public boolean prepareTrash(String gmailId) {
+        return trashStage(gmailId, "prepare").trashed();
+    }
+
+    public void confirmTrash(String gmailId) {
+        if (!trashStage(gmailId, "confirm").trashed()) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Email API did not confirm trash");
+        }
+    }
+
+    private TrashState trashStage(String gmailId, String stage) {
+        TrashState state = patchEmail(gmailId, "trash", Map.of("stage", stage),
+            response -> response.body(TrashState.class));
+        if (state == null || state.trashed() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Email API returned an invalid trash state");
+        }
+        return state;
+    }
+
+    private record TrashState(Boolean trashed) {}
+
+    public EmailMetadata moveCard(String gmailId, String column) {
+        if (column == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Column is required");
+        }
+        EmailMetadata email = patchEmail(gmailId, "board-column", Map.of("column", column),
+            response -> response.body(EmailMetadata.class));
+        if (email == null || !gmailId.equals(email.gmailId()) || email.importedAt() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Email API returned an invalid card");
+        }
+        return email;
+    }
+
+    private <T> T patchEmail(String gmailId, String action, Map<String, String> body,
+                             Function<RestClient.ResponseSpec, T> read) {
+        return withAuthentication(token -> {
             try {
-                return restClient.patch().uri(EMAILS_PATH + "{id}/manual-category/", gmailId)
+                return read.apply(restClient.patch().uri(EMAILS_PATH + "{id}/" + action + "/", gmailId)
                     .headers(headers -> headers.setBearerAuth(token))
-                    .body(Map.of("category", category))
-                    .retrieve().toBodilessEntity();
+                    .body(body)
+                    .retrieve());
             } catch (HttpClientErrorException.BadRequest | HttpClientErrorException.NotFound
                      | HttpClientErrorException.Conflict exception) {
                 throw new ResponseStatusException(exception.getStatusCode());

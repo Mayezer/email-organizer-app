@@ -1,17 +1,19 @@
-import { DatePipe } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, computed, DestroyRef, inject, signal } from '@angular/core';
+import { Component, computed, DestroyRef, effect, inject, signal, untracked } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { finalize, Subscription } from 'rxjs';
 import { EmailApi } from './email-api';
+import { EmailCard } from './email-card';
+import { EMAIL_CATEGORIES, MANUAL_CATEGORIES } from './email-categories';
 import { EmailChanges, EmailMetadata, EmailSyncJob } from './email-page';
 import { EmailSync } from './email-sync';
+import { EmailTrash } from './email-trash';
 
 const PAGE_SIZE = 5;
 
 @Component({
   selector: 'app-inbox',
-  imports: [DatePipe],
+  imports: [EmailCard],
   styleUrls: ['./inbox.css', './inbox-pagination.css', './inbox-categories.css'],
   templateUrl: './inbox.html',
 })
@@ -19,6 +21,7 @@ export class Inbox {
   private readonly api = inject(EmailApi);
   private readonly destroyRef = inject(DestroyRef);
   private readonly sync = inject(EmailSync);
+  private readonly trash = inject(EmailTrash);
   private readonly items = signal<readonly EmailMetadata[]>([]);
   private readonly firstLoaded = signal(false);
   private readonly nextCursor = signal<string | null>(null);
@@ -29,28 +32,8 @@ export class Inbox {
   protected readonly pageViewKey = signal(0);
   private request?: Subscription;
 
-  protected readonly categories = [
-    { value: null, label: 'Todas', icon: 'M4 6h16v12H4zM4 7l8 6 8-6' },
-    {
-      value: 'professional opportunities and recruitment',
-      label: 'Vagas',
-      icon: 'M4 8h16v12H4zM9 8V5h6v3M4 13h16M10 13v2h4v-2',
-    },
-    { value: 'event invitations', label: 'Eventos', icon: 'M4 6h16v14H4zM8 4v4m8-4v4M4 10h16' },
-    { value: 'social media updates', label: 'Redes sociais', icon: 'M4 5h16v11H9l-5 4zM8 10h8' },
-    { value: 'advertising', label: 'Anúncios', icon: 'M4 10h5l8-5v14l-8-5H4zM7 14l2 5m11-7h2' },
-    { value: 'other', label: 'Outros', icon: 'M5 11v2m7-2v2m7-2v2' },
-    {
-      value: 'potential fraud',
-      label: 'Possível fraude',
-      description: 'Classificação legada',
-      icon: 'M12 4 3 20h18zM12 10v4m0 3v.1',
-    },
-    { value: '', label: 'Sem categoria', icon: 'M4 5h7l9 9-6 6-10-9zM8 9h.1m3 7 5-5' },
-  ];
-  protected readonly manualCategories = this.categories.filter(
-    (option) => option.value && !option.description,
-  );
+  protected readonly categories = EMAIL_CATEGORIES;
+  protected readonly manualCategories = MANUAL_CATEGORIES;
   protected readonly category = signal<string | null>(null);
   protected readonly savingId = signal<string | null>(null);
   protected readonly categoryFeedback = signal('');
@@ -82,6 +65,18 @@ export class Inbox {
 
   constructor() {
     this.ensurePage();
+    effect(() => {
+      const removed = this.trash.removedIds();
+      const items = untracked(this.items);
+      const visible = items.filter((email) => !removed.has(email.gmail_id));
+      if (visible.length !== items.length) {
+        untracked(() => {
+          this.items.set(visible);
+          this.keepPageInRange();
+          this.ensurePage();
+        });
+      }
+    });
   }
 
   protected selectCategory(category: string | null): void {
@@ -157,15 +152,6 @@ export class Inbox {
     this.selectedId = gmailId;
   }
 
-  protected emailState(email: EmailMetadata): string {
-    if (email.processing_status === 'PENDING') return 'Em análise';
-    if (email.processing_status === 'FAILED') return 'Falha na análise';
-    return (
-      this.categories.find((option) => option.value === email.effective_category)?.label ??
-      'Sem categoria'
-    );
-  }
-
   protected assignCategory(event: Event, gmailId: string, form: HTMLFormElement): void {
     event.preventDefault();
     const category = new FormData(form).get('category');
@@ -223,7 +209,11 @@ export class Inbox {
   }
 
   private matchesCategory(email: EmailMetadata): boolean {
-    return this.category() === null || email.effective_category === this.category();
+    return (
+      !email.trashed_at &&
+      !this.trash.isRemoved(email.gmail_id) &&
+      (this.category() === null || email.effective_category === this.category())
+    );
   }
 
   private mergeItems(incoming: readonly EmailMetadata[], sort = false): void {
@@ -257,7 +247,11 @@ export class Inbox {
       true,
     );
     this.changeCursor.set(batch.change_cursor);
+    this.keepPageInRange();
+    this.ensurePage();
+  }
 
+  private keepPageInRange(): void {
     const selected = this.items().findIndex((email) => email.gmail_id === this.selectedId);
     if (selected >= 0) {
       // Keep the focused card in view even when new imports change its page number.
@@ -267,7 +261,6 @@ export class Inbox {
       this.selectedId = null;
       this.pageNumber.set(Math.min(this.pageNumber(), this.pageCount()));
     }
-    this.ensurePage();
   }
 
   private ensurePage(): void {
@@ -289,7 +282,10 @@ export class Inbox {
             const incoming = page.items
               .map((email) => this.requestUpdates.get(email.gmail_id) ?? email)
               .filter(
-                (email) => !this.requestUpdates.has(email.gmail_id) || this.matchesCategory(email),
+                (email) =>
+                  !email.trashed_at &&
+                  !this.trash.isRemoved(email.gmail_id) &&
+                  (!this.requestUpdates.has(email.gmail_id) || this.matchesCategory(email)),
               );
             const existing = new Map(this.items().map((email) => [email.gmail_id, email]));
             this.mergeItems(

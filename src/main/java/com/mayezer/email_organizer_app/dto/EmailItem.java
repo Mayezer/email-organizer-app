@@ -15,5 +15,7 @@ public record EmailItem(
     String summary,
     @JsonProperty("requires_action") Boolean requiresAction,
     @JsonProperty("security_status") String securityStatus,
-    @JsonProperty("security_reason") String securityReason
+    @JsonProperty("security_reason") String securityReason,
+    @JsonProperty("has_attachments") Boolean hasAttachments,
+    @JsonProperty("has_links") Boolean hasLinks
 ) {}

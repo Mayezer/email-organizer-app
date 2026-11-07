@@ -1,0 +1,83 @@
+<section class="board" aria-labelledby="board-title">
+  <header class="board-toolbar">
+    <div class="board-summary">
+      <div class="board-heading">
+        <div>
+          <h2 id="board-title">Quadro de e-mails</h2>
+          <p>Mensagens organizadas em colunas</p>
+        </div>
+        <button
+          type="button"
+          class="board-refresh"
+          (click)="refresh()"
+          [disabled]="changeCursor() === null"
+          [attr.aria-disabled]="refreshing() ? 'true' : null"
+        >
+          {{ refreshing() ? 'Sincronizando…' : 'Atualizar' }}
+        </button>
+      </div>
+      <div class="board-feedback" role="status" aria-live="polite">
+        @if (refreshing() && job(); as current) {
+          <p>
+            {{
+              current.status === 'ANALYZING' ? 'Analisando mensagens' : 'Sincronizando mensagens'
+            }}
+            · {{ current.imported_count }} importadas · {{ current.analyzed_count }} analisadas
+            @if (current.analysis_failed_count > 0) {
+              · {{ current.analysis_failed_count }} com falha na análise
+            }
+          </p>
+        }
+        @if (feedback()) {
+          <p>{{ feedback() }}</p>
+        }
+        @if (categoryFeedback()) {
+          <p>{{ categoryFeedback() }}</p>
+        }
+        <p #moveStatus tabindex="-1" [class.visually-hidden]="!moveFeedback()">
+          {{ moveFeedback() }}
+        </p>
+      </div>
+    </div>
+    <fieldset class="categories board-filter">
+      <legend>Filtrar por coluna</legend>
+      @for (option of categories; track option.value) {
+        <label class="category-option" [attr.title]="option.description ?? null">
+          <input
+            class="visually-hidden"
+            type="radio"
+            name="board-category"
+            [checked]="filter() === option.value"
+            (change)="selectFilter(option.value)"
+          />
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path [attr.d]="option.icon" /></svg>
+          <span>{{ option.label }}</span>
+        </label>
+      }
+    </fieldset>
+  </header>
+  @if (initializing()) {
+    <p class="board-notice" role="status">Carregando o quadro…</p>
+  }
+  @if (initialFailed()) {
+    <div class="board-notice" role="status">
+      <p>Não foi possível carregar o quadro.</p>
+      <button type="button" class="board-refresh" (click)="initialize()">Tentar novamente</button>
+    </div>
+  }
+  <div class="board-columns">
+    @for (column of visibleColumns(); track column.id) {
+      <app-board-column
+        [definition]="column"
+        [state]="states()[column.id]"
+        [savingId]="savingId()"
+        [movingId]="movingId()"
+        (pageSelected)="selectPage(column.id, $event)"
+        (retried)="load(column.id)"
+        (remembered)="remember(column.id, $event)"
+        (categorySubmitted)="assignCategory($event.gmailId, $event.submission)"
+        (moveRequested)="moveCard($event.gmailId, $event.column)"
+      />
+    }
+  </div>
+</section>

@@ -1,0 +1,145 @@
+:host {
+  grid-column: 1 / -1;
+}
+
+button {
+  min-height: 2.75rem;
+  padding: 0.375rem 0.75rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 0.625rem;
+  background: var(--surface);
+  color: var(--accent-hover);
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+button:hover {
+  background: var(--accent-soft);
+}
+
+dialog {
+  width: min(calc(100% - 2rem), 42rem);
+  max-height: calc(100dvh - 2rem);
+  padding: clamp(1rem, 3vw, 1.5rem);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-panel);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 1rem 3rem rgb(15 23 42 / 18%);
+  overflow-wrap: anywhere;
+}
+
+dialog::backdrop {
+  background: rgb(11 28 48 / 55%);
+}
+
+.dialog-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding-bottom: 0.875rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.dialog-header p,
+h2 {
+  margin: 0;
+}
+
+h2 {
+  font-size: 1.125rem;
+  line-height: 1.35;
+}
+
+.eyebrow,
+.sender {
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+
+.eyebrow {
+  font-weight: 650;
+}
+
+pre {
+  margin: 0.875rem 0 0;
+  font: inherit;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.original-links,
+.original-attachments {
+  margin-top: 1rem;
+  padding-top: 0.875rem;
+  border-top: 1px solid var(--line);
+}
+
+.original-links h3,
+.original-links p,
+.original-attachments h3,
+.original-attachments p {
+  margin: 0;
+}
+
+.original-links h3,
+.original-attachments h3 {
+  font-size: 0.9375rem;
+}
+
+.original-links p,
+.original-attachments p {
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+
+.original-links ul {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0.625rem 0 0;
+  padding-inline-start: 1.25rem;
+}
+
+.original-links a {
+  color: var(--accent-hover);
+  overflow-wrap: anywhere;
+}
+
+.original-attachments ul {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0.625rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.original-attachments li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  column-gap: 0.75rem;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 0.625rem;
+}
+
+.attachment-status {
+  grid-column: 1 / -1;
+}
+
+.attachment-status p {
+  margin-top: 0.375rem;
+}
+
+button[aria-disabled='true'] {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+[role='alert'],
+.original-attachments .attachment-error {
+  color: var(--error);
+}

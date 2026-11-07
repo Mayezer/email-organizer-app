@@ -1,0 +1,98 @@
+<button
+  type="button"
+  aria-haspopup="dialog"
+  [attr.aria-label]="'Ler original · ' + (email().subject?.trim() || 'Sem assunto')"
+  (click)="open(dialog)"
+>
+  Ler original
+</button>
+<dialog
+  #dialog
+  [attr.aria-label]="email().thread_id ? 'Texto da conversa' : 'Mensagem original'"
+  (cancel)="clear()"
+>
+  <div class="dialog-header">
+    <div>
+      <p class="eyebrow">{{ email().thread_id ? 'Texto da conversa' : 'Mensagem original' }}</p>
+      <h2>{{ email().subject?.trim() || 'Sem assunto' }}</h2>
+      <p class="sender">{{ email().sender?.trim() || 'Remetente desconhecido' }}</p>
+    </div>
+    <button type="button" autofocus (click)="close(dialog)">Fechar</button>
+  </div>
+  @if (state(); as original) {
+    @switch (original.status) {
+      @case ('loading') {
+        <p role="status">Buscando o texto e os anexos no Gmail…</p>
+      }
+      @case ('ready') {
+        @if (original.partial) {
+          <p role="status">Exibindo o conteúdo disponível de parte da conversa.</p>
+        }
+        @if (original.text) {
+          <pre tabindex="0" aria-label="Texto original">{{ original.text }}</pre>
+        }
+        @if (original.attachments.length) {
+          <section class="original-attachments">
+            <h3>{{ email().thread_id ? 'Anexos na conversa' : 'Anexos da mensagem' }}</h3>
+            <ul>
+              @for (file of original.attachments; track file.id) {
+                <li>
+                  <div>
+                    <strong
+                      ><bdi>{{ file.filename }}</bdi></strong
+                    >
+                    <p>{{ fileSize(file.size) }}</p>
+                    @if (file.tooLarge) {
+                      <p>Este arquivo excede o limite de download.</p>
+                    }
+                  </div>
+                  @if (!file.tooLarge) {
+                    <button
+                      type="button"
+                      [attr.aria-label]="'Baixar ' + file.filename"
+                      [attr.aria-disabled]="download()?.status === 'loading' ? 'true' : null"
+                      (click)="save(file)"
+                    >
+                      Baixar
+                    </button>
+                  }
+                  <div class="attachment-status" aria-live="polite" aria-atomic="true">
+                    @if (download(); as transfer) {
+                      @if (transfer.id === file.id) {
+                        <p [class.attachment-error]="transfer.status === 'failed'">
+                          {{ transfer.message }}
+                        </p>
+                      }
+                    }
+                  </div>
+                </li>
+              }
+            </ul>
+          </section>
+        }
+        @if (original.links.length) {
+          <section class="original-links">
+            <h3>Links na conversa</h3>
+            <p>Os links abrem em uma nova aba.</p>
+            <ul>
+              @for (destination of original.links; track destination) {
+                <li>
+                  <a [href]="destination" target="_blank" rel="noopener noreferrer" dir="ltr">
+                    {{ destination }}
+                  </a>
+                </li>
+              }
+            </ul>
+          </section>
+        }
+      }
+      @case ('unavailable') {
+        <p role="status">{{ original.message }}</p>
+      }
+      @case ('failed') {
+        <p role="alert">Não foi possível consultar a mensagem no Gmail.</p>
+        <button type="button" (click)="load()">Tentar novamente</button>
+      }
+    }
+  }
+</dialog>
